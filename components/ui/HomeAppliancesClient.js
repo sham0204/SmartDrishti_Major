@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { formatDateTime, maskKey } from "../../lib/utils";
+import { database, ref, onValue, set } from "../../lib/firebaseClient";
 
 export default function HomeAppliancesClient({
   initialState,
@@ -25,11 +26,71 @@ export default function HomeAppliancesClient({
     [apiConfig]
   );
 
+  // Firebase Realtime Database listeners for live state updates
+  useEffect(() => {
+    if (!database) return;
+
+    // Listen for LED1 state updates
+    const led1Ref = ref(database, 'devices/esp32_01/state/led1');
+    const unsubscribeLed1 = onValue(led1Ref, (snapshot) => {
+      const value = snapshot.val();
+      if (value !== null) {
+        setCurrent(prev => ({ ...prev, led1: value }));
+      }
+    });
+
+    // Listen for LED2 state updates
+    const led2Ref = ref(database, 'devices/esp32_01/state/led2');
+    const unsubscribeLed2 = onValue(led2Ref, (snapshot) => {
+      const value = snapshot.val();
+      if (value !== null) {
+        setCurrent(prev => ({ ...prev, led2: value }));
+      }
+    });
+
+    // Listen for Motor state updates
+    const motorRef = ref(database, 'devices/esp32_01/state/motor');
+    const unsubscribeMotor = onValue(motorRef, (snapshot) => {
+      const value = snapshot.val();
+      if (value !== null) {
+        setCurrent(prev => ({ ...prev, fan1: value }));
+      }
+    });
+
+    // Cleanup function to unsubscribe from listeners
+    return () => {
+      unsubscribeLed1();
+      unsubscribeLed2();
+      unsubscribeMotor();
+    };
+  }, []);
+
   const toggle = async (field) => {
     setLoading(true);
     setError("");
-    const nextState = { ...current, [field]: !current[field] };
+    
+    // Determine the command based on field and current state
+    let command = "";
+    if (field === "led1") {
+      command = current.led1 ? "LED1_OFF" : "LED1_ON";
+    } else if (field === "led2") {
+      command = current.led2 ? "LED2_OFF" : "LED2_ON";
+    } else if (field === "fan1") {
+      command = current.fan1 ? "MOTOR_OFF" : "MOTOR_ON";
+    }
+
     try {
+      // Write command to Firebase Realtime Database
+      if (database) {
+        const commandRef = ref(database, 'devices/esp32_01/commands');
+        await set(commandRef, command);
+      }
+
+      // Update local state immediately for responsive UI
+      const nextState = { ...current, [field]: !current[field] };
+      setCurrent(nextState);
+
+      // Update server state
       const res = await fetch("/api/project/home-appliances/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -39,11 +100,11 @@ export default function HomeAppliancesClient({
       if (!res.ok) {
         setError(data.error || "Failed to update state.");
       } else {
-        setCurrent(nextState);
         setEntries(data.history);
       }
-    } catch {
-      setError("Unexpected error updating state.");
+    } catch (err) {
+      console.error("Firebase or API error:", err);
+      setError("Failed to update state. Please try again.");
     } finally {
       setLoading(false);
     }
