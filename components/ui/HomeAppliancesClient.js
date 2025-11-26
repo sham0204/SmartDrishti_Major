@@ -1,18 +1,29 @@
 "use client";
 
-import { useState } from "react";
-import { formatDateTime } from "../../lib/utils";
+import { useState, useMemo } from "react";
+import { formatDateTime, maskKey } from "../../lib/utils";
 
 export default function HomeAppliancesClient({
   initialState,
   history,
-  projectId
+  projectId,
+  apiConfig: initialApiConfig
 }) {
   const [current, setCurrent] = useState(initialState);
   const [entries, setEntries] = useState(history);
+  const [apiConfig, setApiConfig] = useState(initialApiConfig);
+  const [templateId, setTemplateId] = useState(
+    initialApiConfig?.templateId || ""
+  );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [loadingConfig, setLoadingConfig] = useState(false);
+
+  const maskedKey = useMemo(
+    () => maskKey(apiConfig?.apiKey || ""),
+    [apiConfig]
+  );
 
   const toggle = async (field) => {
     setLoading(true);
@@ -63,6 +74,58 @@ export default function HomeAppliancesClient({
     }
   };
 
+  const handleGenerateConfig = async () => {
+    if (!templateId.trim()) {
+      setError("Please provide a template ID.");
+      return;
+    }
+    setLoadingConfig(true);
+    setError("");
+    try {
+      const res = await fetch("/api/home-appliances/generate-api-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateId })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to generate API key.");
+      } else {
+        setApiConfig(data.config);
+      }
+    } catch {
+      setError("Unexpected error. Please try again.");
+    } finally {
+      setLoadingConfig(false);
+    }
+  };
+
+  const handleUpdateTemplate = async () => {
+    if (!templateId.trim()) {
+      setError("Template ID is required.");
+      return;
+    }
+    setLoadingConfig(true);
+    setError("");
+    try {
+      const res = await fetch("/api/home-appliances/update-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateId })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to update template ID.");
+      } else {
+        setApiConfig(data.config);
+      }
+    } catch {
+      setError("Unexpected error updating template.");
+    } finally {
+      setLoadingConfig(false);
+    }
+  };
+
   const renderControl = (label, field, styleClasses) => {
     const isOn = current[field];
     const onClasses = styleClasses.on;
@@ -98,6 +161,86 @@ export default function HomeAppliancesClient({
           {error}
         </div>
       )}
+
+      <div className="grid gap-4 lg:grid-cols-[1.2fr,1fr]">
+        <div className="card space-y-3 p-5">
+          <h2 className="text-sm font-semibold">API Key &amp; Template ID</h2>
+          {!apiConfig ? (
+            <>
+              <p className="text-xs text-slate-400">
+                Generate a per-user API key and define a template ID. Use them in your
+                ESP32 firmware to authenticate HTTP requests.
+              </p>
+              <div className="space-y-2 text-sm">
+                <label className="text-xs text-slate-300">Template ID</label>
+                <input
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs outline-none focus:border-sky-500"
+                  value={templateId}
+                  onChange={(event) => setTemplateId(event.target.value)}
+                  placeholder="e.g. TPL-HA-01"
+                />
+              </div>
+              <button
+                onClick={handleGenerateConfig}
+                disabled={loadingConfig}
+                className="btn-gradient text-xs disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loadingConfig ? "Generating..." : "Generate API Key"}
+              </button>
+            </>
+          ) : (
+            <div className="space-y-3 text-xs">
+              <div>
+                <span className="text-slate-400">API Key: </span>
+                <span className="font-mono text-sky-200">{maskedKey}</span>
+              </div>
+              <div>
+                <label className="mb-1 block text-slate-300">Template ID</label>
+                <input
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs outline-none focus:border-sky-500"
+                  value={templateId}
+                  onChange={(event) => setTemplateId(event.target.value)}
+                />
+                <button
+                  onClick={handleUpdateTemplate}
+                  disabled={loadingConfig}
+                  className="btn-gradient mt-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loadingConfig ? "Updating..." : "Update Template ID"}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                The same API key/template ID pair works for all SmartDrishti IoT
+                projects.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="card p-5">
+          <h2 className="mb-3 text-sm font-semibold">Current State</h2>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg border border-slate-700 p-3 text-center">
+              <div className="text-xs text-slate-400">LED 1</div>
+              <div className={`text-lg font-semibold ${current.led1 ? "text-sky-300" : "text-slate-300"}`}>
+                {current.led1 ? "ON" : "OFF"}
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 text-center">
+              <div className="text-xs text-slate-400">LED 2</div>
+              <div className={`text-lg font-semibold ${current.led2 ? "text-purple-300" : "text-slate-300"}`}>
+                {current.led2 ? "ON" : "OFF"}
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 text-center">
+              <div className="text-xs text-slate-400">Fan 1</div>
+              <div className={`text-lg font-semibold ${current.fan1 ? "text-emerald-300" : "text-slate-300"}`}>
+                {current.fan1 ? "ON" : "OFF"}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         {renderControl("LED 1", "led1", {
@@ -180,4 +323,3 @@ export default function HomeAppliancesClient({
     </div>
   );
 }
-

@@ -40,14 +40,17 @@ export default async function HomeAppliancesStartPage() {
     );
   }
 
-  // 3. Fetch appliance state history using user.id and project.id
-  const history = await prisma.applianceState.findMany({
-    where: { 
-      userId: user.id, 
-      projectId: project.id 
-    },
-    orderBy: { createdAt: "desc" }
-  });
+  // 3. Fetch appliance state history and API config using user.id and project.id
+  const [apiConfig, history] = await Promise.all([
+    prisma.userApiConfig.findUnique({ where: { userId: user.id } }),
+    prisma.applianceState.findMany({
+      where: { 
+        userId: user.id, 
+        projectId: project.id 
+      },
+      orderBy: { createdAt: "desc" }
+    })
+  ]);
 
   const latest = history[0] || { led1: false, led2: false, fan1: false };
 
@@ -65,6 +68,7 @@ export default async function HomeAppliancesStartPage() {
       initialState={{ led1: latest.led1, led2: latest.led2, fan1: latest.fan1 }}
       history={history}
       projectId={project.id}
+      apiConfig={apiConfig}
     />
   );
 }
