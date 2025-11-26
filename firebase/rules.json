@@ -1,0 +1,19 @@
+{
+  "rules": {
+    "devices": {
+      "$device_id": {
+        "commands": {
+          ".read": "auth != null",
+          ".write": "auth != null",
+          "$command_id": {
+            ".validate": "newData.hasChildren(['command', 'timestamp', 'userId'])"
+          }
+        },
+        "state": {
+          ".read": "auth != null",
+          ".write": "auth != null || newData.child('timestamp').val() > now - 10000"
+        }
+      }
+    }
+  }
+}
